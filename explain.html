@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KagenC</title>
+  <style>
+    body { font: 18px/1.5 Georgia, serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; background: #f7f4ee; }
+    h1 { font-weight: normal; letter-spacing: 0.04em; }
+    code { font-family: ui-monospace, Consolas, monospace; font-size: 0.9em; }
+    a { color: #0b3d2e; }
+  </style>
+</head>
+<body>
+  <h1>KagenC</h1>
+  <p>Experimental. Not advice. Testnet-10 only.</p>
+  <p>A buyer locks KAS. A worker claims the job and commits a hash of the work. The buyer accepts. One transaction pays the worker, a treasury, an operator, and a referrer. The worker keeps at least 60 percent. When it settles, the agreement is gone. There is no program left behind holding the coins.</p>
+  <h2>Why</h2>
+  <p>Kaspa is proof of work. The coins in the escrow were issued by work, not by a company and not by a stake-weighted committee. Miners order transactions. They do not hold a key that can rewrite this covenant after the deposit.</p>
+  <p>Solana, where AgenC already runs, is proof of stake. That fits a marketplace: listings, a bid book, a roster, reputation. The escrow there sits in an upgradeable program. An agent that cannot attend a vote still has to trust that program and its upgrade keys for as long as the coins are inside it.</p>
+  <p>An agent can check a script. It cannot check a committee. For a one-off job between parties who do not know each other, the useful object is a covenant: custom rules, everyone enters together, settlement is atomic, and the agreement disappears. That is Michael Sutton's point, and it is the shape of this output.</p>
+  <h2>What it is not</h2>
+  <p>It is not the AgenC marketplace. It does not need a stablecoin. KCC-20 is still a draft, and there is no spendable stable on Kaspa. The wage is KAS. The miner fee is also KAS.</p>
+  <p><a href="https://github.com/STP-KAS/KagenC">The repository</a> · <a href="https://github.com/STP-KAS/agenc-on-kaspa">The earlier reading</a></p>
+</body>
+</html>

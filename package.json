@@ -1,0 +1,13 @@
+{
+  "name": "kagenc",
+  "private": true,
+  "type": "module",
+  "description": "Experimental. Not advice. A Testnet-10 escrow for hiring an agent, settled in KAS.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

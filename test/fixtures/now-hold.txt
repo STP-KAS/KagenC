@@ -1,0 +1,6 @@
+SilverScript v1.0.0 commit 3ed9733
+No spendable L1 stable
+DAGKnight is KIP-2 Proposed
+No vProgs product
+No KCC-20 Final
+No mainnet x402

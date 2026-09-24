@@ -1,0 +1,261 @@
+pragma silverscript ^0.1.0;
+
+// Native KAS escrow. The sompi on this output are the pot.
+// validateOutputState checks the continuation script, not the amount.
+// Every continuation therefore checks tx.outputs[n].value itself.
+// Miner fee comes from a sibling input. This script never hardcodes a fee.
+
+contract KagenC(
+    pubkey buyer,
+    pubkey treasury,
+    pubkey operator,
+    pubkey referrer,
+    pubkey resolver,
+    int reward,
+    int buyerBond,
+    int workerBond,
+    int protocolBps,
+    int operatorBps,
+    int referrerBps,
+    int deadlineDaa,
+    int reviewDaa,
+    int silenceDaa,
+    byte[32] jobSpec
+) {
+    int constant OPEN = 0;
+    int constant CLAIMED = 1;
+    int constant SUBMITTED = 2;
+    int constant DISPUTED = 3;
+    int constant BPS = 10000;
+    int constant MAX_LEG = 2000;
+    int constant MAX_COMBINED = 4000;
+    int constant WORKER_FLOOR = 6000;
+    int constant MAX_POT = 9000000000000000;
+
+    int phase = 0;
+    byte[32] worker = byte[32](0x0000000000000000000000000000000000000000000000000000000000000000);
+    byte[32] artifact = byte[32](0x0000000000000000000000000000000000000000000000000000000000000000);
+
+    function zero(): byte[32] {
+        return byte[32](0x0000000000000000000000000000000000000000000000000000000000000000);
+    }
+
+    function isZero(byte[32] value): bool {
+        return value == zero();
+    }
+
+    function held(): int {
+        return tx.inputs[this.activeInputIndex].value;
+    }
+
+    function termsOk(): bool {
+        require(reward > 0);
+        require(reward <= MAX_POT);
+        require(buyerBond >= 0);
+        require(buyerBond <= MAX_POT);
+        require(workerBond >= 0);
+        require(workerBond <= MAX_POT);
+        require(reward + buyerBond + workerBond <= MAX_POT);
+        require(protocolBps >= 0);
+        require(protocolBps <= MAX_LEG);
+        require(operatorBps >= 0);
+        require(operatorBps <= MAX_LEG);
+        require(referrerBps >= 0);
+        require(referrerBps <= MAX_LEG);
+        int combined = protocolBps + operatorBps + referrerBps;
+        require(combined <= MAX_COMBINED);
+        require(BPS - combined >= WORKER_FLOOR);
+        require(reviewDaa > deadlineDaa);
+        require(silenceDaa > reviewDaa);
+        require(!isZero(jobSpec));
+        if (referrerBps > 0) {
+            require(blake2b(byte[](referrer)) != blake2b(byte[](buyer)));
+        }
+        return true;
+    }
+
+    function payout(pubkey workerPk) {
+        require(termsOk());
+        require(blake2b(byte[](workerPk)) == worker);
+        require(blake2b(byte[](workerPk)) != blake2b(byte[](buyer)));
+        if (operatorBps > 0) {
+            require(blake2b(byte[](operator)) != blake2b(byte[](workerPk)));
+        }
+        int pot = held();
+        require(pot == reward + buyerBond + workerBond);
+        int protocol = reward * protocolBps / BPS;
+        int operatorFee = reward * operatorBps / BPS;
+        int referrerFee = reward * referrerBps / BPS;
+        int workerAmt = reward - protocol - operatorFee - referrerFee;
+        require(workerAmt > 0);
+        require(workerAmt + protocol + operatorFee + referrerFee == reward);
+
+        int n = 0;
+        require(tx.outputs[n].value == workerAmt);
+        require(tx.outputs[n].scriptPubKey == byte[](new ScriptPubKeyP2PK(workerPk)));
+        n = n + 1;
+        if (protocol > 0) {
+            require(tx.outputs[n].value == protocol);
+            require(tx.outputs[n].scriptPubKey == byte[](new ScriptPubKeyP2PK(treasury)));
+            n = n + 1;
+        }
+        if (operatorFee > 0) {
+            require(tx.outputs[n].value == operatorFee);
+            require(tx.outputs[n].scriptPubKey == byte[](new ScriptPubKeyP2PK(operator)));
+            n = n + 1;
+        }
+        if (referrerFee > 0) {
+            require(tx.outputs[n].value == referrerFee);
+            require(tx.outputs[n].scriptPubKey == byte[](new ScriptPubKeyP2PK(referrer)));
+            n = n + 1;
+        }
+        if (buyerBond > 0) {
+            require(tx.outputs[n].value == buyerBond);
+            require(tx.outputs[n].scriptPubKey == byte[](new ScriptPubKeyP2PK(buyer)));
+            n = n + 1;
+        }
+        if (workerBond > 0) {
+            require(tx.outputs[n].value == workerBond);
+            require(tx.outputs[n].scriptPubKey == byte[](new ScriptPubKeyP2PK(workerPk)));
+            n = n + 1;
+        }
+        require(tx.outputs.length == n);
+    }
+
+    entry claim(pubkey workerPk, sig workerSig) {
+        require(phase == OPEN);
+        require(isZero(worker));
+        require(isZero(artifact));
+        require(termsOk());
+        require(checkSig(workerSig, workerPk));
+        require(blake2b(byte[](workerPk)) != blake2b(byte[](buyer)));
+        int pot = held();
+        require(pot == reward + buyerBond);
+        require(tx.outputs.length == 1);
+        require(tx.outputs[0].value == pot + workerBond);
+        byte[32] bound = blake2b(byte[](workerPk));
+        byte[32] empty = zero();
+        validateOutputState(0, State { phase: CLAIMED, worker: bound, artifact: empty });
+    }
+
+    entry submit(pubkey workerPk, sig workerSig, byte[32] proof) {
+        require(phase == CLAIMED);
+        require(termsOk());
+        require(blake2b(byte[](workerPk)) == worker);
+        require(checkSig(workerSig, workerPk));
+        require(!isZero(proof));
+        int pot = held();
+        require(pot == reward + buyerBond + workerBond);
+        require(tx.outputs.length == 1);
+        require(tx.outputs[0].value == pot);
+        validateOutputState(0, State { phase: SUBMITTED, worker: worker, artifact: proof });
+    }
+
+    entry reject(sig buyerSig) {
+        require(phase == SUBMITTED);
+        require(checkSig(buyerSig, buyer));
+        int pot = held();
+        require(pot == reward + buyerBond + workerBond);
+        require(tx.outputs.length == 1);
+        require(tx.outputs[0].value == pot);
+        byte[32] empty = zero();
+        validateOutputState(0, State { phase: CLAIMED, worker: worker, artifact: empty });
+    }
+
+    entry cancel(sig buyerSig) {
+        require(phase == OPEN);
+        require(isZero(worker));
+        require(checkSig(buyerSig, buyer));
+        int pot = held();
+        require(pot == reward + buyerBond);
+        require(tx.outputs.length == 1);
+        require(tx.outputs[0].value == pot);
+        require(tx.outputs[0].scriptPubKey == byte[](new ScriptPubKeyP2PK(buyer)));
+    }
+
+    entry expireClaim(pubkey workerPk) {
+        require(phase == CLAIMED);
+        require(blake2b(byte[](workerPk)) == worker);
+        require(tx.daa >= deadlineDaa);
+        int pot = held();
+        require(pot == reward + buyerBond + workerBond);
+        byte[32] empty = zero();
+        if (workerBond == 0) {
+            require(tx.outputs.length == 1);
+            require(tx.outputs[0].value == pot);
+            validateOutputState(0, State { phase: OPEN, worker: empty, artifact: empty });
+        } else {
+            require(tx.outputs.length == 2);
+            require(tx.outputs[0].value == reward + buyerBond);
+            require(tx.outputs[1].value == workerBond);
+            require(tx.outputs[1].scriptPubKey == byte[](new ScriptPubKeyP2PK(workerPk)));
+            validateOutputState(0, State { phase: OPEN, worker: empty, artifact: empty });
+        }
+    }
+
+    entry accept(pubkey workerPk, sig buyerSig) {
+        require(phase == SUBMITTED);
+        require(!isZero(artifact));
+        require(checkSig(buyerSig, buyer));
+        payout(workerPk);
+    }
+
+    entry autoAccept(pubkey workerPk) {
+        require(phase == SUBMITTED);
+        require(!isZero(artifact));
+        require(tx.daa >= reviewDaa);
+        payout(workerPk);
+    }
+
+    entry disputeByBuyer(sig buyerSig) {
+        require(phase == SUBMITTED);
+        require(checkSig(buyerSig, buyer));
+        int pot = held();
+        require(pot == reward + buyerBond + workerBond);
+        require(tx.outputs.length == 1);
+        require(tx.outputs[0].value == pot);
+        validateOutputState(0, State { phase: DISPUTED, worker: worker, artifact: artifact });
+    }
+
+    entry disputeByWorker(pubkey workerPk, sig workerSig) {
+        require(phase == SUBMITTED);
+        require(blake2b(byte[](workerPk)) == worker);
+        require(checkSig(workerSig, workerPk));
+        int pot = held();
+        require(pot == reward + buyerBond + workerBond);
+        require(tx.outputs.length == 1);
+        require(tx.outputs[0].value == pot);
+        validateOutputState(0, State { phase: DISPUTED, worker: worker, artifact: artifact });
+    }
+
+    entry resolveToWorker(pubkey workerPk, sig resolverSig) {
+        require(phase == DISPUTED);
+        require(checkSig(resolverSig, resolver));
+        payout(workerPk);
+    }
+
+    entry resolveToBuyer(pubkey workerPk, sig resolverSig) {
+        require(phase == DISPUTED);
+        require(checkSig(resolverSig, resolver));
+        require(blake2b(byte[](workerPk)) == worker);
+        int pot = held();
+        require(pot == reward + buyerBond + workerBond);
+        if (workerBond == 0) {
+            require(tx.outputs.length == 1);
+            require(tx.outputs[0].value == pot);
+            require(tx.outputs[0].scriptPubKey == byte[](new ScriptPubKeyP2PK(buyer)));
+        } else {
+            require(tx.outputs.length == 2);
+            require(tx.outputs[0].value == reward + buyerBond);
+            require(tx.outputs[0].scriptPubKey == byte[](new ScriptPubKeyP2PK(buyer)));
+            require(tx.outputs[1].value == workerBond);
+            require(tx.outputs[1].scriptPubKey == byte[](new ScriptPubKeyP2PK(workerPk)));
+        }
+    }
+
+    entry silence(pubkey workerPk) {
+        require(phase == DISPUTED);
+        require(tx.daa >= silenceDaa);
+        payout(workerPk);
+    }
+}

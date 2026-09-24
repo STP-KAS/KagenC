@@ -1,0 +1,31 @@
+{
+  "readAt": "2026-09-24",
+  "agencProtocol": {
+    "repo": "https://github.com/tetsuo-ai/agenc-protocol",
+    "commit": "18795f05496e7a09d7830a27b17cc37720e500cc",
+    "committedAt": "2026-08-23T20:19:38-06:00",
+    "program": "agenc-coordination",
+    "programId": "HJsZ53Zb27b8QMRbQpuDngE44AdwCGxvEZr61Zmxw1xK",
+    "productionSurface": "101 instructions, revision 5, private-zk absent"
+  },
+  "masterFile": {
+    "repo": "https://github.com/STP-KAS/kaspa-master-file",
+    "commit": "6b4dcaccd419229407388b08ea6e237e3b78aa09",
+    "silverScript": "v1.0.0 3ed9733",
+    "kcc20": "Draft",
+    "spendableL1Stable": false,
+    "dagknightShipped": false,
+    "vprogsProduct": false,
+    "x402Mainnet": false
+  },
+  "fee": {
+    "basisPoints": 10000,
+    "maxProtocolBps": 2000,
+    "maxOperatorBps": 2000,
+    "maxReferrerBps": 2000,
+    "maxCombinedBps": 4000,
+    "workerFloorBps": 6000,
+    "liveProtocolBps": 500,
+    "rounding": "floor each leg, dust stays with the worker"
+  }
+}
